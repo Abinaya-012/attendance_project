@@ -1,0 +1,111 @@
+{% extends 'attendance/base.html' %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card shadow-sm">
+      <div class="card-header bg-primary text-white">
+        <h5 class="mb-0">Register New Student</h5>
+      </div>
+      <div class="card-body">
+
+        <button type="button" class="btn btn-outline-primary w-100 mb-3" id="toggleCamera">
+          📷 Scan ID Card Barcode
+        </button>
+
+        <div id="camera-container" style="display:none; margin-bottom:16px;">
+          <div id="reader" style="width:100%;"></div>
+          <p class="text-muted small text-center mt-2">
+            Hold the barcode in the box — try both orientations if needed
+          </p>
+          <button type="button" class="btn btn-sm btn-danger w-100 mt-1" id="stopCamera">
+            Stop Camera
+          </button>
+        </div>
+
+        <div id="scan-alert" class="alert alert-success" style="display:none;"></div>
+
+        <hr>
+
+        <form method="POST">
+          {% csrf_token %}
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Full Name</label>
+            <input type="text" name="name" id="name" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Student ID (Barcode Value)</label>
+            <input type="text" name="student_id" id="student_id" class="form-control"
+                   placeholder="Auto-filled by scanner, or type manually" required>
+            <small class="text-muted">The barcode value from the ID card</small>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Email (optional)</label>
+            <input type="email" name="email" class="form-control">
+          </div>
+          <button type="submit" class="btn btn-primary w-100">Register Student</button>
+        </form>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+let html5QrCode = null;
+
+document.getElementById('toggleCamera').addEventListener('click', function () {
+  document.getElementById('camera-container').style.display = 'block';
+  this.style.display = 'none';
+
+  html5QrCode = new Html5Qrcode("reader");
+
+  const config = {
+    fps: 15,
+    qrbox: { width: 280, height: 180 },
+    aspectRatio: 1.5,
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.CODABAR,
+      Html5QrcodeSupportedFormats.ITF,
+    ]
+  };
+
+  html5QrCode.start(
+    { facingMode: "environment" },
+    config,
+    function (decodedText, decodedResult) {
+      // Success — fill the form
+      document.getElementById('student_id').value = decodedText;
+      const alert = document.getElementById('scan-alert');
+      alert.style.display = 'block';
+      alert.textContent = '✅ Barcode scanned: ' + decodedText;
+      stopScanner();
+    },
+    function (errorMessage) {
+      // Scanning in progress — ignore frame errors
+    }
+  ).catch(err => {
+    alert('Camera could not start: ' + err + '\nPlease allow camera permission in your browser.');
+    stopScanner();
+  });
+});
+
+document.getElementById('stopCamera').addEventListener('click', stopScanner);
+
+function stopScanner() {
+  if (html5QrCode && html5QrCode.isScanning) {
+    html5QrCode.stop().then(() => {
+      html5QrCode.clear();
+    }).catch(() => {});
+  }
+  document.getElementById('camera-container').style.display = 'none';
+  document.getElementById('toggleCamera').style.display = 'block';
+}
+</script>
+{% endblock %}

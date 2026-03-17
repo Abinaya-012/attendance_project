@@ -1,0 +1,205 @@
+{% extends 'attendance/base.html' %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+
+    <!-- Session status banner -->
+    <div class="card shadow-sm mb-3 border-0">
+      <div class="card-body text-center py-3
+        {% if session_info.open %}bg-success bg-opacity-10{% else %}bg-secondary bg-opacity-10{% endif %}">
+        <div style="font-size:2rem;">{{ session_info.icon }}</div>
+        <h5 class="mt-1 mb-0
+          {% if session_info.open %}text-success{% else %}text-secondary{% endif %}">
+          {{ session_info.label }}
+        </h5>
+        {% if session_info.open %}
+          <small class="text-muted">Closes at {{ session_info.closes_at }}</small>
+        {% endif %}
+
+        <!-- Live clock -->
+        <div class="mt-2">
+          <span id="live-clock"
+            style="font-size:1.4rem;font-weight:700;font-family:monospace;color:#333;"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Camera card — only show if session is open -->
+    {% if session_info.open %}
+    <div class="card shadow-sm">
+      <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">📷 Mark Attendance</h5>
+        <span class="badge bg-light text-success" id="scan-count">0 scanned</span>
+      </div>
+      <div class="card-body text-center">
+
+        <div id="result-box" class="alert d-none mb-3" role="alert" style="font-size:1.1rem;"></div>
+
+        <div id="reader" style="width:100%;"></div>
+        <p class="text-muted small mt-2">
+          Hold ID card barcode in the box — rotate 90° if needed
+        </p>
+
+      </div>
+    </div>
+
+    <!-- Today's check-ins -->
+    <div class="card shadow-sm mt-3">
+      <div class="card-header fw-semibold">
+        Today's Check-ins
+        <span class="badge bg-success ms-1" id="session-badge">
+          {% if session_info.session == 'morning' %}Morning{% else %}Afternoon{% endif %}
+        </span>
+      </div>
+      <ul class="list-group list-group-flush" id="checkin-log">
+        <li class="list-group-item text-muted text-center small">No check-ins yet</li>
+      </ul>
+    </div>
+
+    {% else %}
+    <!-- Attendance closed message -->
+    <div class="card shadow-sm text-center">
+      <div class="card-body py-5">
+        <div style="font-size:3rem;">🔒</div>
+        <h5 class="mt-3">Attendance is Closed</h5>
+        <p class="text-muted">
+          <strong>Morning session:</strong> Opens 8:00 AM — Closes 9:30 AM<br>
+          <strong>Afternoon session:</strong> Opens 1:40 PM — Closes 2:15 PM<br>
+          <strong>Sunday:</strong> No attendance
+        </p>
+        <a href="{% url 'dashboard' %}" class="btn btn-primary mt-2">View Dashboard</a>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+// ── Live clock ───────────────────────────────────────────────────
+function updateClock() {
+  const now  = new Date();
+  const h    = now.getHours().toString().padStart(2,'0');
+  const m    = now.getMinutes().toString().padStart(2,'0');
+  const s    = now.getSeconds().toString().padStart(2,'0');
+  const ampm = now.getHours() >= 12 ? 'PM' : 'AM';
+  const hr12 = now.getHours() % 12 || 12;
+  document.getElementById('live-clock').textContent =
+    `${hr12.toString().padStart(2,'0')}:${m}:${s} ${ampm}`;
+
+  // Auto-close if session ends while page is open
+  const totalMins = now.getHours() * 60 + now.getMinutes();
+  const morningEnd   = 9 * 60 + 30;   // 9:30 AM
+  const afternoonEnd = 14 * 60 + 15;  // 2:15 PM
+
+  {% if session_info.session == 'morning' %}
+  if (totalMins > morningEnd) {
+    location.reload();
+  }
+  {% elif session_info.session == 'afternoon' %}
+  if (totalMins > afternoonEnd) {
+    location.reload();
+  }
+  {% endif %}
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+{% if session_info.open %}
+// ── Camera scanner ───────────────────────────────────────────────
+let cooldown   = false;
+let lastCode   = '';
+let totalToday = 0;
+
+const resultBox = document.getElementById('result-box');
+const logList   = document.getElementById('checkin-log');
+const scanCount = document.getElementById('scan-count');
+
+window.addEventListener('load', function () {
+  const html5QrCode = new Html5Qrcode("reader");
+  html5QrCode.start(
+    { facingMode: "environment" },
+    {
+      fps: 15,
+      qrbox: { width: 280, height: 180 },
+      aspectRatio: 1.5,
+      formatsToSupport: [
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.UPC_A,
+        Html5QrcodeSupportedFormats.UPC_E,
+        Html5QrcodeSupportedFormats.CODABAR,
+        Html5QrcodeSupportedFormats.ITF,
+      ]
+    },
+    function(decodedText) {
+      if (cooldown || decodedText === lastCode) return;
+      lastCode = decodedText;
+      cooldown  = true;
+      setTimeout(() => { cooldown = false; lastCode = ''; }, 5000);
+      sendBarcode(decodedText);
+    },
+    function() {}
+  ).catch(function(err) {
+    showResult('danger', '❌ Camera not available. Please allow camera access.');
+  });
+});
+
+function sendBarcode(barcode) {
+  showResult('info', '⏳ Checking...');
+  fetch("{% url 'mark_attendance' %}", {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': '{{ csrf_token }}'
+    },
+    body: JSON.stringify({ barcode: barcode })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.status === 'success') {
+      showResult('success', data.message);
+      totalToday++;
+      scanCount.textContent = totalToday + ' scanned';
+      addToLog(data.student_name, barcode, data.time, data.session);
+    } else if (data.status === 'already') {
+      showResult('warning', data.message);
+    } else if (data.status === 'closed') {
+      showResult('danger', data.message);
+      setTimeout(() => location.reload(), 2000);
+    } else {
+      showResult('danger', data.message);
+    }
+  })
+  .catch(() => showResult('danger', '❌ Network error. Try again.'));
+}
+
+function showResult(type, msg) {
+  resultBox.className = 'alert alert-' + type + ' mb-3';
+  resultBox.textContent = msg;
+  resultBox.classList.remove('d-none');
+  clearTimeout(resultBox._timer);
+  resultBox._timer = setTimeout(() => resultBox.classList.add('d-none'), 5000);
+}
+
+function addToLog(name, barcode, time, session) {
+  const empty = logList.querySelector('.text-muted');
+  if (empty) empty.remove();
+  const li = document.createElement('li');
+  li.className = 'list-group-item d-flex justify-content-between align-items-center';
+  li.innerHTML = `
+    <span>
+      <strong>${name}</strong>
+      <small class="text-muted ms-1">(${barcode})</small>
+      <span class="badge bg-info ms-1" style="font-size:.7rem;">${session || ''}</span>
+    </span>
+    <span class="badge bg-success">${time}</span>
+  `;
+  logList.insertBefore(li, logList.firstChild);
+}
+{% endif %}
+</script>
+{% endblock %}

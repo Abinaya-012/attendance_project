@@ -1,0 +1,195 @@
+{% extends 'attendance/base.html' %}
+{% block content %}
+
+<h4 class="mb-1">Today's Attendance</h4>
+<p class="text-muted small mb-4">{{ today|date:"l, d M Y" }} — Monday to Saturday</p>
+
+<!-- Morning session stats -->
+<div class="mb-2">
+  <span class="badge bg-warning text-dark me-1">🌅 Morning Session</span>
+  <small class="text-muted">closes 9:30 AM</small>
+</div>
+<div class="row g-3 mb-4">
+  <div class="col-md-3 col-6">
+    <div class="card text-center shadow-sm border-primary">
+      <div class="card-body">
+        <h2 class="text-primary">{{ total_students }}</h2>
+        <p class="mb-0 text-muted small">Total Students</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3 col-6">
+    <div class="card text-center shadow-sm border-success">
+      <div class="card-body">
+        <h2 class="text-success">{{ morning_present }}</h2>
+        <p class="mb-0 text-muted small">Present</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3 col-6">
+    <div class="card text-center shadow-sm border-danger">
+      <div class="card-body">
+        <h2 class="text-danger">{{ morning_absent }}</h2>
+        <p class="mb-0 text-muted small">Absent</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3 col-6">
+    <div class="card text-center shadow-sm border-info">
+      <div class="card-body">
+        <h2 class="text-info">{{ morning_pct }}%</h2>
+        <p class="mb-0 text-muted small">Attendance Rate</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Afternoon session stats -->
+<div class="mb-2">
+  <span class="badge bg-info text-dark me-1">🌤 Afternoon Session</span>
+  <small class="text-muted">closes 2:15 PM</small>
+</div>
+<div class="row g-3 mb-4">
+  <div class="col-md-3 col-6">
+    <div class="card text-center shadow-sm border-primary">
+      <div class="card-body">
+        <h2 class="text-primary">{{ total_students }}</h2>
+        <p class="mb-0 text-muted small">Total Students</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3 col-6">
+    <div class="card text-center shadow-sm border-success">
+      <div class="card-body">
+        <h2 class="text-success">{{ afternoon_present }}</h2>
+        <p class="mb-0 text-muted small">Present</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3 col-6">
+    <div class="card text-center shadow-sm border-danger">
+      <div class="card-body">
+        <h2 class="text-danger">{{ afternoon_absent }}</h2>
+        <p class="mb-0 text-muted small">Absent</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3 col-6">
+    <div class="card text-center shadow-sm border-info">
+      <div class="card-body">
+        <h2 class="text-info">{{ afternoon_pct }}%</h2>
+        <p class="mb-0 text-muted small">Attendance Rate</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Charts -->
+<div class="row g-3 mb-4">
+  <div class="col-md-5">
+    <div class="card shadow-sm">
+      <div class="card-header fw-semibold">Today — Morning vs Afternoon</div>
+      <div class="card-body">
+        <canvas id="donutChart" height="200"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-7">
+    <div class="card shadow-sm">
+      <div class="card-header fw-semibold">Last 7 Days — Both Sessions</div>
+      <div class="card-body">
+        <canvas id="lineChart" height="200"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Recent check-ins -->
+<div class="card shadow-sm">
+  <div class="card-header fw-semibold">Recent Check-ins Today</div>
+  <div class="card-body p-0">
+    <table class="table mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Student</th>
+          <th>ID</th>
+          <th>Session</th>
+          <th>Time</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for record in recent %}
+        <tr>
+          <td>{{ record.student.name }}</td>
+          <td><code>{{ record.student.student_id }}</code></td>
+          <td>
+            {% if record.session == 'morning' %}
+              <span class="badge bg-warning text-dark">🌅 Morning</span>
+            {% else %}
+              <span class="badge bg-info text-dark">🌤 Afternoon</span>
+            {% endif %}
+          </td>
+          <td>{{ record.time_in|time:"h:i A" }}</td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="4" class="text-center text-muted">No check-ins yet today</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+new Chart(document.getElementById('donutChart'), {
+  type: 'doughnut',
+  data: {
+    labels: [
+      'Morning Present', 'Morning Absent',
+      'Afternoon Present', 'Afternoon Absent'
+    ],
+    datasets: [{
+      data: [
+        {{ morning_present }}, {{ morning_absent }},
+        {{ afternoon_present }}, {{ afternoon_absent }}
+      ],
+      backgroundColor: ['#ffc107','#e9ecef','#0dcaf0','#dee2e6'],
+      borderWidth: 0
+    }]
+  },
+  options: {
+    cutout: '65%',
+    plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } }
+  }
+});
+
+new Chart(document.getElementById('lineChart'), {
+  type: 'line',
+  data: {
+    labels: [{% for d in last_7 %}'{{ d.date }}'{% if not forloop.last %},{% endif %}{% endfor %}],
+    datasets: [
+      {
+        label: 'Morning',
+        data: [{% for d in last_7 %}{{ d.morning }}{% if not forloop.last %},{% endif %}{% endfor %}],
+        borderColor: '#ffc107',
+        backgroundColor: 'rgba(255,193,7,0.1)',
+        fill: true, tension: 0.3
+      },
+      {
+        label: 'Afternoon',
+        data: [{% for d in last_7 %}{{ d.afternoon }}{% if not forloop.last %},{% endif %}{% endfor %}],
+        borderColor: '#0dcaf0',
+        backgroundColor: 'rgba(13,202,240,0.1)',
+        fill: true, tension: 0.3
+      }
+    ]
+  },
+  options: {
+    scales: {
+      y: { beginAtZero: true, max: {{ total_students }} }
+    }
+  }
+});
+</script>
+{% endblock %}
